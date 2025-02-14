@@ -926,7 +926,7 @@ static int ipv4_set_default_routes(struct tunnel *tunnel)
 
 	route_init(ppp_rt);
 
-	if (cfg->half_internet_routes == 0) {
+	if (cfg->half_internet_routes == 0 && cfg->custom_route == 0) {
 		// Delete the current default route
 		log_debug("Deleting the current default route...\n");
 		ret = ipv4_del_route(def_rt);
@@ -957,6 +957,29 @@ static int ipv4_set_default_routes(struct tunnel *tunnel)
 		} else if (ret != 0) {
 			log_warn("Could not set the new default route (%s).\n",
 			         err_ipv4_str(ret));
+		}
+
+	} else if (cfg->custom_route == 1) {
+		log_debug("Setting custom route %x/%x\n", cfg->custom_route_ip, cfg->custom_route_mask);
+		route_dest(ppp_rt).s_addr = cfg->custom_route_ip;
+		route_mask(ppp_rt).s_addr = cfg->custom_route_mask;
+
+		free(route_iface(ppp_rt));
+		route_iface(ppp_rt) = strdup(tunnel->ppp_iface);
+		if (!route_iface(ppp_rt))
+			return ERR_IPV4_NO_MEM;
+		if (route_gtw(ppp_rt).s_addr == tunnel->ipv4.ip_addr.s_addr)
+			route_gtw(ppp_rt).s_addr = 0;
+		if (route_gtw(ppp_rt).s_addr == 0)
+			ppp_rt->rt_flags &= ~RTF_GATEWAY;
+		if (route_gtw(ppp_rt).s_addr != 0)
+			ppp_rt->rt_flags |= RTF_GATEWAY;
+		ret = ipv4_set_route(ppp_rt);
+		if (ret == ERR_IPV4_SEE_ERRNO && errno == EEXIST) {
+			log_warn("10.10.0.0/16 route exists already.\n");
+		} else if (ret != 0) {
+			log_warn("Could not set the new route %x/%x (%s).\n",
+				cfg->custom_route_ip, cfg->custom_route_mask, err_ipv4_str(ret));
 		}
 
 	} else {
@@ -1026,6 +1049,7 @@ int ipv4_restore_routes(struct tunnel *tunnel)
 			log_warn("Could not delete route to vpn server (%s).\n",
 			         err_ipv4_str(ret));
 		if ((cfg->half_internet_routes == 0) &&
+			(cfg->custom_route == 0) &&
 		    (tunnel->ipv4.split_routes == 0)) {
 			ret = ipv4_del_route(ppp_rt);
 			if (ret != 0)
@@ -1172,6 +1196,10 @@ int ipv4_add_nameservers_to_resolv_conf(struct tunnel *tunnel)
 	if (tunnel->ipv4.dns_suffix != NULL) {
 		strcpy(dns_suffix, "search ");
 		strncat(dns_suffix, tunnel->ipv4.dns_suffix, MAX_DOMAIN_LENGTH);
+		if (tunnel->config->additional_search_domains) {
+			strncat(dns_suffix, " ", MAX_DOMAIN_LENGTH);
+			strncat(dns_suffix, tunnel->config->additional_search_domains, MAX_DOMAIN_LENGTH);
+		}
 		replace_char(dns_suffix, ';', ' ');
 	} else {
 		dns_suffix[0] = '\0';

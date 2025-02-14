@@ -106,10 +106,14 @@ struct vpn_config {
 	int			set_dns;
 	int			pppd_use_peerdns;
 	int			use_syslog;
+	char        *additional_search_domains;
 #if HAVE_RESOLVCONF
 	int			use_resolvconf;
 #endif
 	int			half_internet_routes;
+	int			custom_route;
+	in_addr_t	custom_route_ip;
+	in_addr_t	custom_route_mask;
 
 	unsigned int		persistent;
 

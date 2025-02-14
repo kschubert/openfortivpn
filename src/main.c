@@ -31,6 +31,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <arpa/inet.h>
+
 #if HAVE_USR_SBIN_PPPD && HAVE_USR_SBIN_PPP
 #error "Both HAVE_USR_SBIN_PPPD and HAVE_USR_SBIN_PPP have been defined."
 #elif HAVE_USR_SBIN_PPPD
@@ -82,7 +84,7 @@
 "                    [--otp=<otp>] [--otp-delay=<delay>] [--otp-prompt=<prompt>]\n" \
 "                    [--pinentry=<program>] [--realm=<realm>]\n" \
 "                    [--ifname=<ifname>] [--set-routes=<0|1>]\n" \
-"                    [--half-internet-routes=<0|1>] [--set-dns=<0|1>]\n" \
+"                    [--half-internet-routes=<0|1>] [--custom-route=I.I.I.I/M.M.M.M] [--set-dns=<0|1>]\n" \
 PPPD_USAGE \
 "                    " RESOLVCONF_USAGE "[--ca-file=<file>]\n" \
 "                    [--user-cert=<file>] [--user-key=<file>]\n" \
@@ -133,6 +135,7 @@ PPPD_USAGE \
 "  --no-routes                   Do not configure routes, same as --set-routes=0.\n" \
 "  --half-internet-routes=[01]   Add two 0.0.0.0/1 and 128.0.0.0/1 routes with higher\n" \
 "                                priority instead of replacing the default route.\n" \
+"  --custom-route=I.I.I.I/M.M.M.M   Add I.I.I.I/M.M.M.M route instead of replacing the default route.\n" \
 "  --set-dns=[01]                Set if openfortivpn should add DNS name servers\n" \
 "                                and domain search list in /etc/resolv.conf.\n" \
 "                                If installed resolvconf is used for the update.\n" \
@@ -240,7 +243,9 @@ int main(int argc, char *argv[])
 		.set_routes = 1,
 		.set_dns = 1,
 		.use_syslog = 0,
+		.additional_search_domains = NULL,
 		.half_internet_routes = 0,
+		.custom_route = 0,
 		.persistent = 0,
 #if HAVE_RESOLVCONF
 		.use_resolvconf = USE_RESOLVCONF,
@@ -300,9 +305,11 @@ int main(int argc, char *argv[])
 		{"sni",                  required_argument, NULL, 0},
 		{"no-routes",            no_argument, &cli_cfg.set_routes, 0},
 		{"half-internet-routes", required_argument, NULL, 0},
+		{"custom-route",         required_argument, NULL, 0},
 		{"set-dns",              required_argument, NULL, 0},
 		{"no-dns",               no_argument, &cli_cfg.set_dns, 0},
 		{"use-syslog",           no_argument, &cli_cfg.use_syslog, 1},
+		{"add-search-domains",   required_argument, NULL, 0},
 		{"persistent",           required_argument, NULL, 0},
 		{"ca-file",              required_argument, NULL, 0},
 		{"user-cert",            required_argument, NULL, 0},
@@ -556,6 +563,20 @@ int main(int argc, char *argv[])
 				break;
 			}
 			if (strcmp(long_options[option_index].name,
+			           "custom-route") == 0) {
+				char *slashpos = strchr(optarg, '/');
+				if (!slashpos) {
+					log_warn("Bad custom-route in configuration file: \"%s\".\n",
+							optarg);
+					break;
+				}
+				*slashpos = 0;
+				cli_cfg.custom_route = 1;
+				cli_cfg.custom_route_ip = inet_addr(optarg);
+				cli_cfg.custom_route_mask = inet_addr(slashpos + 1);
+				break;
+			}
+			if (strcmp(long_options[option_index].name,
 			           "otp-delay") == 0) {
 				long otp_delay = strtol(optarg, NULL, 0);
 
@@ -594,6 +615,12 @@ int main(int argc, char *argv[])
 			           "cookie") == 0) {
 				free(cli_cfg.cookie);
 				cli_cfg.cookie = strdup_with_prefix(optarg, "SVPNCOOKIE=");
+				break;
+			}
+			if (strcmp(long_options[option_index].name,
+			           "add-search-domains") == 0) {
+				free(cli_cfg.additional_search_domains);
+				cli_cfg.additional_search_domains = strdup(optarg);
 				break;
 			}
 			if (strcmp(long_options[option_index].name,

@@ -38,6 +38,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <arpa/inet.h>
+
 const struct vpn_config invalid_cfg = {
 	.gateway_host = {'\0'},
 	.gateway_port = 0,
@@ -62,7 +64,11 @@ const struct vpn_config invalid_cfg = {
 	.use_resolvconf = -1,
 #endif
 	.use_syslog = -1,
+	.additional_search_domains = NULL,
 	.half_internet_routes = -1,
+	.custom_route = -1,
+	.custom_route_ip = 0,
+	.custom_route_mask = 0,
 	.persistent = -1,
 #if HAVE_USR_SBIN_PPPD
 	.pppd_log = NULL,
@@ -303,6 +309,9 @@ int load_config(struct vpn_config *cfg, const char *filename)
 				continue;
 			}
 			cfg->set_dns = set_dns;
+		} else if (strcmp(key, "add-search-domains") == 0) {
+			free(cfg->additional_search_domains);
+			cfg->additional_search_domains = strdup(val);
 		} else if (strcmp(key, "sni") == 0) {
 			strncpy(cfg->sni, val, GATEWAY_HOST_SIZE);
 			cfg->sni[GATEWAY_HOST_SIZE] = '\0';
@@ -324,6 +333,16 @@ int load_config(struct vpn_config *cfg, const char *filename)
 				continue;
 			}
 			cfg->half_internet_routes = half_internet_routes;
+		} else if (strcmp(key, "custom-route") == 0) {
+			char *slashpos = strchr(val, '/');
+			if (!slashpos) {
+				log_warn("Bad custom-route in configuration file: \"%s\".\n",
+				         val);
+			}
+			*slashpos = 0;
+			cfg->custom_route = 1;
+			cfg->custom_route_ip = inet_addr(val);
+			cfg->custom_route_mask = inet_addr(slashpos + 1);
 		} else if (strcmp(key, "persistent") == 0) {
 			unsigned long persistent = strtoul(val, NULL, 0);
 
@@ -570,6 +589,11 @@ void merge_config(struct vpn_config *dst, struct vpn_config *src)
 		dst->use_syslog = src->use_syslog;
 	if (src->half_internet_routes != invalid_cfg.half_internet_routes)
 		dst->half_internet_routes = src->half_internet_routes;
+	if (src->custom_route == 1) {
+		dst->custom_route = src->custom_route;
+		dst->custom_route_ip = src->custom_route_ip;
+		dst->custom_route_mask = src->custom_route_mask;
+	}
 	if (src->persistent != invalid_cfg.persistent)
 		dst->persistent = src->persistent;
 #if HAVE_USR_SBIN_PPPD
@@ -645,4 +669,8 @@ void merge_config(struct vpn_config *dst, struct vpn_config *src)
 		dst->hostcheck = src->hostcheck;
 	if (src->check_virtual_desktop != invalid_cfg.check_virtual_desktop)
 		dst->check_virtual_desktop = src->check_virtual_desktop;
+	if (src->additional_search_domains) {
+		free(dst->additional_search_domains);
+		dst->additional_search_domains = src->additional_search_domains;
+	}
 }
