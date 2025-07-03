@@ -1115,7 +1115,7 @@ int ipv4_add_nameservers_to_resolv_conf(struct tunnel *tunnel)
 		char *resolvconf_call;
 
 		log_debug("Attempting to run %s.\n", RESOLVCONF_PATH);
-		resolvconf_call_len = strlen(RESOLVCONF_PATH) + 20
+		resolvconf_call_len = strlen(RESOLVCONF_PATH) + 50
 		                      + strlen(tunnel->ppp_iface);
 		resolvconf_call = malloc(resolvconf_call_len);
 		if (resolvconf_call == NULL) {
@@ -1125,8 +1125,9 @@ int ipv4_add_nameservers_to_resolv_conf(struct tunnel *tunnel)
 		}
 
 		snprintf(resolvconf_call, resolvconf_call_len,
-		         "%s -a \"%s.openfortivpn\"",
+		         "%s%s -a \"%s.openfortivpn\"",
 		         RESOLVCONF_PATH,
+				 tunnel->config->custom_route == 1 ? " -p" : "",
 		         tunnel->ppp_iface);
 
 		use_resolvconf = 1;
